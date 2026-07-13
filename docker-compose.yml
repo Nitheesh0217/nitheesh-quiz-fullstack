@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: concentrate-quiz
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,6 +30,56 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: concentrate-quiz-app
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+      - '4000:4000'
+    environment:
+      NODE_ENV: production
+      # PORT is intentionally NOT set here: Fastify (src/server/env.ts) and
+      # `next start` both read process.env.PORT, so setting one value here
+      # would put both processes on the same port. Each already defaults
+      # correctly on its own (Next -> 3000, Fastify -> 4000).
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/concentrate-quiz
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in a root .env file (32+ chars)}"
+      JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in a root .env file (32+ chars)}"
+      JWT_ACCESS_TTL: "${JWT_ACCESS_TTL:-15m}"
+      JWT_REFRESH_TTL: "${JWT_REFRESH_TTL:-7d}"
+      COOKIE_SECRET: "${COOKIE_SECRET:?Set COOKIE_SECRET in a root .env file (16+ chars)}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      GOOGLE_REDIRECT_URI: "${GOOGLE_REDIRECT_URI:-http://localhost:4000/api/auth/google/callback}"
+      FRONTEND_URL: "${FRONTEND_URL:-http://localhost:3000}"
+      AI_API_KEY: "${AI_API_KEY:-}"
+      AI_BASE_URL: "${AI_BASE_URL:-}"
+      AI_MODEL: "${AI_MODEL:-}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-Concentrate Portal <no-reply@concentrate-portal.app>}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    container_name: concentrate-portal-nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
 
 volumes:
   postgres_data:

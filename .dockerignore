@@ -1,0 +1,11 @@
+node_modules
+.next
+dist
+.git
+.env
+.env.test
+.env.local
+.claude
+coverage
+powershell.cmd
+*.log
