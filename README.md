@@ -1,94 +1,107 @@
-# Concentrate.ai Hiring Quiz Implementation
+# Concentrate.ai Canvas-Style School Portal
 
-This repository is a full-stack implementation of the Concentrate.ai Hiring Quiz described in [SPECS.md](./SPECS.md). It builds a Canvas-style school portal with Admin, Teacher, and Student workflows, a Fastify API, PostgreSQL persistence, Redis support, JWT cookie authentication, Google OAuth, tests, CI, Docker Compose, and an nginx deployment path.
+Full-stack implementation of the Concentrate.ai hiring quiz (see [SPECS.md](./SPECS.md)): a Canvas-style school portal with Admin, Teacher, and Student roles, a rubric-based grading workflow, a school statistics API, and an AI chat assistant grounded in real account data.
 
-## Tech Stack
+## Architecture
 
-- Frontend: Next.js 15, React 19, Tailwind CSS, Radix primitives, lucide-react
-- Backend: Node.js, Fastify, TypeScript, Zod
-- Data: PostgreSQL 17, Kysely, Redis
-- Testing: Vitest, Testing Library, Playwright
-- Delivery: GitHub Actions, Dockerfile, Docker Compose, nginx
+```mermaid
+graph TD
+    Client[Next.js 15 Client / React 19]
+    Nginx[Nginx Reverse Proxy / Port 80 and 443]
+    Middleware[Next.js Edge Middleware Route Guard]
+    Fastify[Fastify REST API / Port 4000]
+    Postgres[(PostgreSQL 17)]
+    Redis[(Redis 7)]
 
-## Quickstart
-
-Install dependencies:
-
-```bash
-npm install
+    Client -->|HTTPS| Nginx
+    Nginx -->|Static assets, pages| Middleware
+    Middleware -->|Redirect if unauthorized| Client
+    Nginx -->|/api/*| Fastify
+    Fastify -->|Read/write| Postgres
+    Fastify -->|Rate limiting, sessions| Redis
 ```
 
-Create a local environment file:
+**Frontend:** Next.js 15 (App Router), React 19, Tailwind CSS, Radix UI primitives, lucide-react icons.
+**Backend:** Node.js, Fastify, TypeScript, Zod.
+**Data:** PostgreSQL 17 via Kysely, Redis for caching and rate limiting.
+**Testing:** Vitest, Testing Library, Playwright.
+**Delivery:** GitHub Actions, Dockerfile, Docker Compose, nginx.
 
-```bash
-cp .env.example .env
-```
-
-Start local infrastructure:
-
-```bash
-docker compose up -d postgres redis
-```
-
-Run migrations:
-
-```bash
-npm run db:migrate
-```
-
-Start the full development stack:
-
-```bash
-npm run dev
-```
-
-The Next.js app runs on `http://localhost:3000`; API requests are proxied to the Fastify server on `http://localhost:4000`.
-
-## Role Flows
-
-Admin users can manage teacher groups and users, suspend or unsuspend students and teachers, review platform-wide counts, and inspect school-level statistics.
-
-Teacher users can create and manage classes, add or remove students, publish assignments, review submissions, grade work, and provide feedback.
-
-Student users can view enrolled classes, inspect assignments and syllabus content, submit work, and review grades and teacher feedback.
-
-## School Statistics API
-
-The versioned stats API is mounted at `src/server/routes/stats.ts` under `/api/v0/stats`. Routes require an authenticated session.
-
-| Endpoint | Method | Description |
-| --- | --- | --- |
-| `/api/v0/stats/average-grades` | `GET` | Average grade across all classes |
-| `/api/v0/stats/average-grades/:id` | `GET` | Average grade for one class |
-| `/api/v0/stats/teacher-names` | `GET` | Teacher names |
-| `/api/v0/stats/student-names` | `GET` | Student names |
-| `/api/v0/stats/classes` | `GET` | Classes with teacher names |
-| `/api/v0/stats/classes/:id` | `GET` | Students in one class |
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for more detail.
 
 ## Authentication
 
-Email/password auth issues signed JWT access and refresh tokens in HTTP-only cookies. Google OAuth is wired through `/api/auth/google` and `/api/auth/google/callback`; when Google credentials are absent, those routes fail gracefully while the rest of the app continues to work.
+JWT access/refresh tokens in httpOnly, `SameSite=Lax` cookies. Next.js edge middleware gates routes by role before the page renders; every backend route is independently checked server-side via `authenticate` + `requireRole` hooks, so a client bypassing the UI still can't reach data it shouldn't. Google OAuth is supported alongside email/password login; a bare Google sign-up defers role/school selection to a `/complete-profile` step before the dashboard is reachable.
+
+## Database
+
+Migrations are plain TypeScript, run via Kysely, in `src/server/db/migrations/`.
+
+| Table | Notes |
+|---|---|
+| `users` | `role` enum (admin/teacher/student), `school_id`, `is_suspended` |
+| `schools` | multi-tenant boundary |
+| `classes` | owned by a teacher, scoped to a school, unique enrollment `code` |
+| `student_enrollments` | join table, `status` (active/dropped) |
+| `assignments` | rubric stored as JSONB |
+| `submissions` | student deliverables (text or file) |
+| `grades` | rubric scores + feedback, linked to a submission |
+| `teacher_groups` | admin-managed teacher groupings |
+| `syllabus_weeks` / `class_announcements` | teacher-editable per-class content |
+
+## School Statistics API
+
+Exposed under `/api/v0/stats`, authenticated:
+
+| Endpoint | Method | Returns |
+|---|---|---|
+| `/api/v0/stats/average-grades` | GET | Average grade across all classes |
+| `/api/v0/stats/average-grades/:id` | GET | Average grade for one class |
+| `/api/v0/stats/teacher-names` | GET | All teacher names |
+| `/api/v0/stats/student-names` | GET | All student names |
+| `/api/v0/stats/classes` | GET | All classes |
+| `/api/v0/stats/classes/:id` | GET | Students enrolled in one class |
+
+## Local Setup
+
+Requires Node.js >= 20, npm >= 10, Docker and Docker Compose.
+
+```bash
+npm install
+cp .env.example .env
+docker compose up -d postgres redis
+npm run db:migrate
+npm run dev
+```
+
+Frontend at `http://localhost:3000`, API at `http://localhost:4000` (proxied through the frontend in dev via Next.js rewrites).
+
+Populate `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env` to enable Google sign-in, and `AI_API_KEY` to enable the live chat assistant (it falls back to a deterministic mock stream if unset, so the app runs fully without one).
 
 ## Testing
 
-Run the main checks:
-
 ```bash
-npm run lint
-npm run test
-npm run coverage
-npm run test:e2e
-npm run build
+npm run lint          # ESLint
+npm run test           # Vitest: unit + integration (Fastify's app.inject(), not a separate HTTP client)
+npm run coverage       # Vitest with coverage - 100% thresholds enforced (lines/statements/branches/functions)
+npx playwright install # first run only
+npm run test:e2e       # Playwright end-to-end specs
 ```
 
-Vitest coverage thresholds are configured in [vitest.config.ts](./vitest.config.ts). Playwright specs live in [e2e](./e2e).
+## Deployment
 
-## Documentation
+```bash
+npm run build
+docker compose up -d --build
+docker compose exec app npm run db:migrate
+```
 
-- [Architecture](./docs/ARCHITECTURE.md)
-- [Deployment](./docs/DEPLOYMENT.md)
-- [Hiring quiz spec](./SPECS.md)
+`docker-compose.yml` runs the app, Postgres, Redis, and an nginx reverse proxy. For a cloud VM: point DNS at the host, install Docker, use Certbot for a TLS certificate, and mount it where `nginx/nginx.conf` expects it. See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
-## Docker And Deployment
+## Seeded accounts
 
-The root [Dockerfile](./Dockerfile) builds the server and client. [docker-compose.yml](./docker-compose.yml) defines the app, PostgreSQL, Redis, and nginx services. See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for local and production deployment notes.
+| Role | Email | Password |
+|---|---|---|
+| Admin | `sarah.chen@university.edu` | `AdminPass123!` |
+| Teacher | `alice.thompson@university.edu` | `TeacherPass123!` |
+| Student | `alex.johnson@university.edu` | `StudentPass123!` |

@@ -1,47 +1,62 @@
 # Architecture
 
-This project implements the Concentrate.ai Hiring Quiz as a single repository with a Next.js frontend and a Fastify backend.
+## Directory layout
 
-## High-Level System
+```
+src/
+├── app/                    # Next.js App Router (frontend)
+│   ├── dashboard/
+│   │   ├── admin/          # admin console: users, schools, teacher groups
+│   │   ├── teacher/        # classes, assignments, grading, syllabus/announcements
+│   │   ├── student/        # enrolled classes, submissions, grades
+│   │   └── layout.tsx      # role-aware sidebar + topbar shell
+│   ├── layout.tsx
+│   └── page.tsx
+├── components/              # shared React components (Button, Input, Modal, AuthProvider, ChatWidget, ...)
+├── lib/                     # browser-side helpers (apiCall fetch wrapper with 401 refresh-retry, auth types)
+└── server/                  # Fastify backend
+    ├── controllers/         # business logic, one file per resource
+    ├── db/                  # Kysely connection, generated types, migrations
+    ├── middleware/          # auth, RBAC, rate limiting
+    ├── routes/               # route definitions - parse with Zod, call a controller
+    ├── utils/                # jwt, password hashing, email, LLM router, chat tools
+    ├── app.ts                # Fastify instance + plugin registration + error handler
+    └── server.ts             # production entrypoint
+```
 
-- Frontend: `src/app` contains the Next.js 15 App Router UI. Shared UI components live in `src/components`, and browser API helpers live in `src/lib`.
-- Backend: `src/server` contains the Fastify application, route registration, controllers, middleware, and utilities.
-- Database: PostgreSQL 17 is accessed through Kysely. The connection and migration code live under `src/server/db`.
-- Cache: Redis is configured through `src/server/utils/redis.ts` and provided by Docker Compose.
-- Delivery: The root `Dockerfile` builds both the server and Next.js client. `docker-compose.yml` runs the app with PostgreSQL, Redis, and nginx.
+## Request flow
 
-## Roles
+A request like `GET /api/classes/:id` goes:
 
-Role-specific UI routes are grouped under `src/app/dashboard`:
+1. **Route** (`src/server/routes/classes.ts`) — parses `class_id` with Zod, no logic of its own.
+2. **Middleware** — `authenticate` verifies the JWT from the cookie and attaches `request.user`; `requireRole(...)` rejects the wrong role with a 403 before the handler runs.
+3. **Controller** (`src/server/controllers/classController.ts`) — `getClassById(classId, user)` does the actual ownership/enrollment check and query.
+4. **Kysely** — type-safe query against Postgres; the return type is checked at compile time against the generated schema types in `src/server/db/types.ts`.
 
-- Admin: `src/app/dashboard/admin` and `src/server/routes/admin.ts`
-- Teacher: `src/app/dashboard/teacher`, class routes, assignment routes, syllabus routes, announcements, and submission grading paths
-- Student: `src/app/dashboard/student`, class views, assignment submission views, and grade views
+Errors are thrown as typed subclasses (`NotFoundError`, `ForbiddenError`, `ConflictError`, `ValidationError`) and translated into the right HTTP status by a single error handler in `app.ts`, so individual routes don't each hand-roll status codes.
 
-Server-side authorization is enforced with JWT authentication middleware in `src/server/middleware/auth.ts` and role helpers in `src/server/middleware/rbac.ts`.
+## Cascade deletes
 
-## Authentication
+Defined at the migration level, not in application code:
+- Deleting a class cascades to its enrollments, assignments, submissions, and grades.
+- Deleting an assignment cascades to its submissions and grades.
+- Deleting a user cascades to their enrollments/submissions. Suspending a user just sets `is_suspended = true` and leaves their history intact — suspension and deletion are deliberately different operations.
 
-The app uses signed JWT access and refresh tokens stored in HTTP-only cookies. Cookie helpers live in `src/server/utils/cookies.ts`, JWT helpers live in `src/server/utils/jwt.ts`, and auth routes live in `src/server/routes/auth.ts`.
+## Auth (two independent checks)
 
-Google OAuth is implemented in `src/server/controllers/oauthController.ts` and exposed through:
+- **Next.js middleware** (`src/middleware.ts`) decodes the JWT at the edge and redirects `/dashboard/*` requests before the page renders — this is for UX (no flash of the wrong dashboard), not the security boundary.
+- **Fastify RBAC** (`src/server/middleware/rbac.ts`) re-checks the same JWT and role on every backend route independently:
+  ```typescript
+  export function requireRole(...allowedRoles: UserRole[]) {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+      if (!request.user || !allowedRoles.includes(request.user.role)) {
+        throw new ForbiddenError('You do not have permission to access this resource');
+      }
+    };
+  }
+  ```
+  A student calling a teacher-only endpoint directly (bypassing the UI entirely) still gets a 403 here — the middleware redirect is not what's actually protecting the data.
 
-- `GET /api/auth/google`
-- `GET /api/auth/google/callback`
+## AI chat assistant
 
-The frontend uses credentialed fetch requests so browser cookies are sent with API calls.
-
-## School Statistics API
-
-The School Statistics API lives in `src/server/routes/stats.ts` and is registered from `src/server/routes/index.ts` with the `/api/v0/stats` prefix. Its controller logic is in `src/server/controllers/statsController.ts`.
-
-Implemented endpoints:
-
-- `GET /api/v0/stats/average-grades`
-- `GET /api/v0/stats/average-grades/:id`
-- `GET /api/v0/stats/teacher-names`
-- `GET /api/v0/stats/student-names`
-- `GET /api/v0/stats/classes`
-- `GET /api/v0/stats/classes/:id`
-
-The frontend calls these endpoints through the shared API helpers in `src/lib/api.ts`.
+`src/components/ChatWidget.tsx` (frontend) and `src/server/routes/chat.ts` + `src/server/utils/chatTools.ts` (backend). The model doesn't get a data dump up front — it calls tool functions (`get_my_grades`, `get_my_assignments`, `get_class_roster`, etc.) that are scoped to the authenticated user server-side, so it physically cannot read another student's grades or a teacher's roster it doesn't own. If `AI_API_KEY` isn't set, or the provider call fails, `src/server/utils/llmRouter.ts` falls back to a deterministic mock stream built from the same real tool data, so the feature still works end to end without a live API key.

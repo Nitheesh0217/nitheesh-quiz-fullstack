@@ -2,86 +2,96 @@
 
 This project is designed to run locally with Docker Compose and to deploy on a cloud VM using Docker Compose, nginx, and Certbot-managed TLS certificates.
 
-## Local Development
+## Local infrastructure
 
-Install dependencies:
+Postgres and Redis run in containers even during local development, so the app always talks to a real database:
 
-```bash
-npm install
-```
-
-Create a local environment file:
-
-```bash
-cp .env.example .env
-```
-
-Start PostgreSQL and Redis:
+- Postgres 17 on host port `5433` (not the default `5432`, to avoid clashing with a local Postgres install)
+- Redis 7 on `6379`
 
 ```bash
 docker compose up -d postgres redis
 ```
 
-Run database migrations:
+## Dockerfile
+
+Multi-stage build: install dependencies once, compile the Fastify server (`tsc`) and the Next.js client separately, then copy just the compiled output into a slim runtime image — no source TypeScript or dev dependencies ship to production.
+
+## docker-compose.yml services
+
+`postgres`, `redis`, `app` (the compiled Next.js + Fastify container), `nginx` (reverse proxy in front of `app`).
+
+## Deploying to a VM
+
+Works on any provider (AWS EC2, DigitalOcean, GCP Compute Engine, etc.) — these steps are provider-agnostic.
+
+### 1. Install Docker
 
 ```bash
-npm run db:migrate
+sudo apt update
+sudo apt install docker.io docker-compose -y
 ```
 
-Start the development app:
+### 2. Clone the repo
 
 ```bash
-npm run dev
+git clone <repository_url> /var/www/concentrate-portal
+cd /var/www/concentrate-portal
 ```
 
-The frontend runs on `http://localhost:3000`; the Fastify API defaults to `http://localhost:4000`.
+### 3. Create a production `.env`
 
-## Production With Docker Compose
-
-The root `Dockerfile` builds the TypeScript server and Next.js client. The root `docker-compose.yml` defines:
-
-- `postgres`: PostgreSQL 17
-- `redis`: Redis 7
-- `app`: the built application container
-- `nginx`: reverse proxy using `nginx/nginx.conf`
-
-Prepare required environment variables in a root `.env` file on the server:
+Never commit this file.
 
 ```bash
-JWT_SECRET=replace-with-32-plus-chars
-JWT_REFRESH_SECRET=replace-with-32-plus-chars
-COOKIE_SECRET=replace-with-16-plus-chars
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=https://your-domain.example/api/auth/google/callback
-FRONTEND_URL=https://your-domain.example
+NODE_ENV=production
+PORT=4000
+
+DATABASE_URL=postgres://postgres:secure-db-password@postgres:5432/concentrate-quiz
+REDIS_URL=redis://redis:6379
+
+# generate real random values for these, not the placeholders below
+JWT_SECRET=replace-with-a-real-64-char-secret
+JWT_REFRESH_SECRET=replace-with-a-different-64-char-secret
+COOKIE_SECRET=replace-with-a-16-plus-char-secret
+
+# optional - leave blank to disable Google sign-in
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
+
+# optional - leave blank to run the AI chat assistant on its deterministic mock fallback instead of a live provider
 AI_API_KEY=
-AI_BASE_URL=
-AI_MODEL=
-RESEND_API_KEY=
-EMAIL_FROM=Concentrate Portal <no-reply@your-domain.example>
+
+FRONTEND_URL=https://yourdomain.com
 ```
 
-Build and run:
+### 4. Build and start
 
 ```bash
 docker compose up -d --build
 ```
 
-Run migrations against the production database before accepting traffic:
+### 5. Run migrations
 
 ```bash
 docker compose exec app npm run db:migrate
 ```
 
-## Nginx And SSL
+## nginx and TLS
 
-The nginx service mounts `nginx/nginx.conf` and exposes ports `80` and `443`. For a self-hosted VM deployment:
+`nginx/nginx.conf` routes `/api/*` to the Fastify container on port 4000 and everything else to the Next.js container on port 3000.
 
-1. Point your domain DNS records at the VM.
-2. Install Docker, Docker Compose, nginx/Certbot tooling as needed by the host.
-3. Use Certbot to obtain certificates for the domain.
-4. Mount or copy the resulting certificate files into the path expected by `docker-compose.yml`, currently `nginx/ssl`.
-5. Start the stack with `docker compose up -d --build`.
+To put a real domain and TLS in front of it:
 
-Keep production secrets out of git and rotate JWT, cookie, Google OAuth, and email provider credentials if they are ever exposed.
+1. Point the domain's DNS `A` record at the VM's IP.
+2. Install Certbot: `sudo apt install certbot -y`
+3. Stop nginx to free port 80: `docker compose stop nginx`
+4. Get a certificate: `sudo certbot certonly --standalone -d yourdomain.com`
+5. Copy the cert into the path `docker-compose.yml` expects:
+   ```bash
+   mkdir -p nginx/ssl
+   cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem nginx/ssl/fullchain.pem
+   cp /etc/letsencrypt/live/yourdomain.com/privkey.pem nginx/ssl/privkey.pem
+   ```
+6. Start nginx back up: `docker compose start nginx`

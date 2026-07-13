@@ -11,7 +11,7 @@ const outfit = Outfit({
 
 export const metadata: Metadata = {
   title: 'Concentrate Portal - Canvas-Style School Platform',
-  description: 'Premium Educational SaaS portal for school statistics, assignment management, and rubric grading.',
+  description: 'A Canvas-style school portal for class management, assignment submission, and rubric grading.',
 };
 
 export default function RootLayout({
