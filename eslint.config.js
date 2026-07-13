@@ -20,6 +20,7 @@ module.exports = [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
       'src/server/db/migrations/**',
+      'inspect*.tmp.js',
     ],
   },
   ...compat.extends(

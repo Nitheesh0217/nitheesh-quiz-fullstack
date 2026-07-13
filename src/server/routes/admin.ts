@@ -18,6 +18,13 @@ const createSchoolSchema = z.object({
   name: z.string().min(1),
 });
 
+const adminUpdateUserSchema = z.object({
+  email: z.string().email().optional(),
+  name: z.string().min(1).optional(),
+  role: z.enum(['admin', 'teacher', 'student']).optional(),
+  school_id: z.string().uuid().optional().nullable(),
+});
+
 const roleQuerySchema = z.enum(['admin', 'teacher', 'student']).optional();
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
@@ -57,6 +64,44 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       role: result.role,
       school_id: result.school_id,
     });
+  });
+
+  // PUT /api/admin/users/:user_id (admin editing a user's details)
+  app.put('/users/:user_id', async (request, reply) => {
+    const { user_id } = z.object({ user_id: z.string().uuid() }).parse(request.params);
+    const body = adminUpdateUserSchema.parse(request.body);
+
+    if (body.email) {
+      const existing = await db
+        .selectFrom('users')
+        .select('id')
+        .where('email', '=', body.email)
+        .where('id', '!=', user_id)
+        .executeTakeFirst();
+
+      if (existing) {
+        throw new ConflictError('Email already in use by another user');
+      }
+    }
+
+    const result = await db
+      .updateTable('users')
+      .set({
+        ...(body.email !== undefined ? { email: body.email } : {}),
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.role !== undefined ? { role: body.role } : {}),
+        ...(body.school_id !== undefined ? { school_id: body.school_id } : {}),
+      })
+      .where('id', '=', user_id)
+      .returning(['id', 'name', 'email', 'role', 'school_id', 'is_suspended'])
+      .executeTakeFirst();
+
+    if (!result) {
+      reply.status(404).send({ error: 'User not found' });
+      return;
+    }
+
+    reply.send(result);
   });
 
   // DELETE /api/admin/users/:user_id (admin deleting a user)

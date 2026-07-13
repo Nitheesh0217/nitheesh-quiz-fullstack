@@ -4,6 +4,7 @@ import {
   getClasses,
   getClassById,
   createClass,
+  updateClass,
   enrollStudentInClass,
   getClassStudents,
   deleteClass,
@@ -30,6 +31,11 @@ const createClassSchema = z.object({
   // Only meaningful (and required) when an admin is creating the class -
   // teachers always become the teacher of their own created class.
   teacher_id: z.string().uuid().optional(),
+});
+
+const updateClassSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional().nullable(),
 });
 
 const enrollSchema = z.object({
@@ -224,6 +230,14 @@ export async function classRoutes(app: FastifyInstance): Promise<void> {
     const body = createAnnouncementSchema.parse(request.body);
     const result = await createAnnouncement(class_id, body, user);
     reply.status(201).send(result);
+  });
+
+  app.put('/:class_id', { preHandler: requireRole('teacher', 'admin') }, async (request, reply) => {
+    const user = request.user!;
+    const { class_id } = z.object({ class_id: z.string().uuid() }).parse(request.params);
+    const body = updateClassSchema.parse(request.body);
+    const result = await updateClass(class_id, body, user);
+    reply.send(result);
   });
 
   app.delete('/:class_id', { preHandler: requireRole('teacher', 'admin') }, async (request, reply) => {

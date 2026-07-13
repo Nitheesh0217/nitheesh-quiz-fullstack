@@ -203,6 +203,37 @@ export async function getAvailableClassesForStudent(studentId: string, schoolId:
     .execute();
 }
 
+export interface UpdateClassInput {
+  name?: string;
+  description?: string | null;
+}
+
+export async function updateClass(classId: string, input: UpdateClassInput, user: AuthUser) {
+  const classroom = await db
+    .selectFrom('classes')
+    .select(['id', 'teacher_id'])
+    .where('id', '=', classId)
+    .executeTakeFirst();
+
+  if (!classroom) {
+    throw new NotFoundError('Class not found');
+  }
+
+  if (user.role === 'teacher' && classroom.teacher_id !== user.id) {
+    throw new ForbiddenError('You are not the teacher of this class');
+  }
+
+  return db
+    .updateTable('classes')
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    })
+    .where('id', '=', classId)
+    .returningAll()
+    .executeTakeFirstOrThrow();
+}
+
 export async function deleteClass(classId: string, user: AuthUser) {
   const classroom = await db
     .selectFrom('classes')

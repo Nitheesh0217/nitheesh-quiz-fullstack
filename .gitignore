@@ -21,3 +21,4 @@ nginx/ssl/*.pem
 *-results.txt
 *.tsbuildinfo
 demo-assets/
+inspect*.tmp.js

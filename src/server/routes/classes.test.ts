@@ -147,6 +147,91 @@ describe('Classes Routes Integration', () => {
     await db.deleteFrom('schools').where('id', '=', otherSchool.id).execute();
   });
 
+  it('should update a class name and description (Teacher, owner)', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/classes/${classId}`,
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${teacherToken}`,
+      },
+      payload: {
+        name: 'Introduction to Physics (Updated)',
+        description: 'Now covers thermodynamics too.',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.name).toBe('Introduction to Physics (Updated)');
+    expect(body.description).toBe('Now covers thermodynamics too.');
+  });
+
+  it('should update a class as Admin regardless of ownership', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/classes/${classId}`,
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${adminToken}`,
+      },
+      payload: { name: 'Introduction to Physics (Admin Edit)' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).name).toBe('Introduction to Physics (Admin Edit)');
+  });
+
+  it('should deny updating a class for a non-owner teacher', async () => {
+    const otherTeacher = await db
+      .insertInto('users')
+      .values({
+        email: 'other-update-teacher@school.edu',
+        password_hash: await hashPassword('password123'),
+        name: 'Other Update Teacher',
+        role: 'teacher',
+        school_id: schoolId,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    const otherTeacherToken = signAccessToken({ sub: otherTeacher.id, email: otherTeacher.email, role: 'teacher', school_id: schoolId, token_version: 0, onboarding_completed: true });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/classes/${classId}`,
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${otherTeacherToken}`,
+      },
+      payload: { name: 'Hijacked Name' },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('should deny a student updating a class', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/classes/${classId}`,
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${studentToken}`,
+      },
+      payload: { name: 'Student Edit Attempt' },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('should return 404 when updating a non-existent class', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/classes/00000000-0000-0000-0000-000000000000`,
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${teacherToken}`,
+      },
+      payload: { name: 'Ghost Class' },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
   it('should require teacher_id when Admin creates a class', async () => {
     const response = await app.inject({
       method: 'POST',

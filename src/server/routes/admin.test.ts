@@ -552,6 +552,86 @@ describe('Admin Routes Integration', () => {
     expect(found).toBeUndefined();
   });
 
+  it('should allow admin to edit a user\'s name, email, and role', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: adminToken,
+      },
+      payload: {
+        email: 'edit-target@school.edu',
+        password: 'editablepassword123',
+        name: 'Edit Target',
+        role: 'student',
+        school_id: schoolId,
+      },
+    });
+    const createdUser = createResponse.json();
+
+    const updateResponse = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/users/${createdUser.id}`,
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: adminToken,
+      },
+      payload: {
+        name: 'Edit Target (Updated)',
+        email: 'edit-target-updated@school.edu',
+        role: 'teacher',
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    const updated = updateResponse.json();
+    expect(updated.name).toBe('Edit Target (Updated)');
+    expect(updated.email).toBe('edit-target-updated@school.edu');
+    expect(updated.role).toBe('teacher');
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/users/${createdUser.id}`,
+      cookies: { [ACCESS_TOKEN_COOKIE]: adminToken },
+    });
+  });
+
+  it('should reject editing a user to an email already in use', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/users/${adminId}`,
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: adminToken,
+      },
+      payload: { email: 'teacher-test@school.edu' },
+    });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  it('should return 404 when editing a non-existent user', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/users/00000000-0000-0000-0000-000000000000',
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: adminToken,
+      },
+      payload: { name: 'Ghost User' },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('should block non-admins from editing users', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/users/${adminId}`,
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: teacherToken,
+      },
+      payload: { name: 'Hijacked Name' },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
   it('should return 404 when deleting a non-existent user', async () => {
     const response = await app.inject({
       method: 'DELETE',
