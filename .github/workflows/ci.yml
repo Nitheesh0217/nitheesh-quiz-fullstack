@@ -35,6 +35,21 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # docker-compose.yml's `app` service requires these (`:?...` syntax -
+      # by design, so a real deployment can't silently run with a placeholder
+      # secret). Compose interpolates every service's environment block when
+      # parsing the file, even for commands that only target postgres/redis,
+      # so `docker compose down` below would fail without this even though
+      # this job never actually starts the `app` service. These are
+      # throwaway CI-only values, not real secrets.
+      - name: Write root .env for docker compose
+        run: |
+          cat > .env <<'EOF'
+          JWT_SECRET=ci-compose-jwt-secret-please-replace-me-with-64-chars-0000000
+          JWT_REFRESH_SECRET=ci-compose-refresh-secret-please-replace-me-64-chars-00
+          COOKIE_SECRET=ci-compose-cookie-secret-please-replace-16-chars
+          EOF
+
       - name: Start postgres + redis
         run: docker compose up -d postgres redis
 
