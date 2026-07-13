@@ -440,7 +440,7 @@ describe('AdminDashboard', () => {
     render(<AdminDashboard />);
     await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
+    fireEvent.click(screen.getByText('Math Dept'));
     await waitFor(() => expect(screen.getByText('No teachers in this group yet.')).toBeDefined());
 
     fireEvent.change(screen.getByDisplayValue('Select a teacher'), { target: { value: 't1' } });
@@ -530,7 +530,7 @@ describe('AdminDashboard', () => {
     render(<AdminDashboard />);
     await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
+    fireEvent.click(screen.getByText('Math Dept'));
     await waitFor(() => expect(screen.getByText('Group not found')).toBeDefined());
   });
 
@@ -555,7 +555,7 @@ describe('AdminDashboard', () => {
     render(<AdminDashboard />);
     await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
+    fireEvent.click(screen.getByText('Math Dept'));
     await waitFor(() => expect(screen.getByText('alice@school.edu')).toBeDefined());
 
     fireEvent.click(screen.getByTitle('Remove from group'));

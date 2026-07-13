@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import RegisterPage from './page';
+import { useAuth } from '../../components/AuthProvider';
 
 afterEach(() => {
   cleanup();
@@ -15,6 +16,11 @@ const mockSearchParams = new Map<string, string>();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
   useSearchParams: () => ({ get: (key: string) => mockSearchParams.get(key) ?? null }),
+}));
+
+const mockLogin = vi.fn();
+vi.mock('../../components/AuthProvider', () => ({
+  useAuth: vi.fn(),
 }));
 
 const SCHOOLS = [{ id: '11111111-1111-1111-1111-111111111111', name: 'Concentrate Academy' }];
@@ -32,6 +38,13 @@ describe('RegisterPage', () => {
   beforeEach(() => {
     mockSearchParams.clear();
     localStorage.clear();
+    vi.mocked(useAuth).mockReturnValue({
+      user: null,
+      isLoading: false,
+      login: mockLogin,
+      logout: vi.fn(),
+      hasRole: () => false,
+    });
   });
 
   it('loads the schools catalog and renders the form', async () => {

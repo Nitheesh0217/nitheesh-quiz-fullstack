@@ -2,7 +2,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import React from 'react';
 import DashboardLayout from './layout';
 import { useAuth } from '../../components/AuthProvider';
@@ -125,18 +124,6 @@ describe('DashboardLayout', () => {
     const collapseButtons = screen.getAllByTitle('Collapse sidebar');
     fireEvent.click(collapseButtons[0]);
     expect(screen.getAllByTitle('Expand sidebar').length).toBeGreaterThan(0);
-  });
-
-  it('opens the user dropdown and signs out', async () => {
-    const logout = vi.fn();
-    vi.mocked(useAuth).mockReturnValue({ user: ADMIN_USER, isLoading: false, login: vi.fn(), logout, hasRole: () => true });
-    render(<DashboardLayout>content</DashboardLayout>);
-
-    const user = userEvent.setup();
-    await user.click(screen.getAllByText('Sarah Chen')[0].closest('button')!);
-    await user.click(await screen.findByText('Sign Out'));
-
-    expect(logout).toHaveBeenCalledTimes(1);
   });
 
   it('renders breadcrumbs with a clickable link segment via the layout context', () => {

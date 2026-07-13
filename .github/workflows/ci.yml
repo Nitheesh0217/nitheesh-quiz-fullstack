@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Type-check
+        run: npm run type-check
+
       # docker-compose.yml's `app` service requires these (`:?...` syntax -
       # by design, so a real deployment can't silently run with a placeholder
       # secret). Compose interpolates every service's environment block when

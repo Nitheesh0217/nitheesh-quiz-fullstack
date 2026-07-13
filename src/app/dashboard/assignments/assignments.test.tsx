@@ -14,8 +14,13 @@ afterEach(() => {
 });
 
 const mockPush = vi.fn();
+// A stable object reference, matching Next's real useRouter() (which does not
+// return a new object on every render) - otherwise the effect in page.tsx
+// that depends on `router` re-fires on every re-render here, re-triggering
+// loadData() any time local state changes (e.g. a filter click).
+const mockRouter = { push: mockPush };
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => mockRouter,
 }));
 
 vi.mock('../../../components/AuthProvider', () => ({
