@@ -93,6 +93,12 @@ export default function TeacherClassDetailPage() {
   const [expandedWeek, setExpandedWeek] = useState<number | null>(1);
   const [isDescCollapsed, setIsDescCollapsed] = useState(true);
 
+  // Class info inline editor (name/description)
+  const [isEditingClassInfo, setIsEditingClassInfo] = useState(false);
+  const [editClassName, setEditClassName] = useState('');
+  const [editClassDescription, setEditClassDescription] = useState('');
+  const [classInfoSaving, setClassInfoSaving] = useState(false);
+
   // Syllabus week form (create/edit)
   const [isWeekFormOpen, setIsWeekFormOpen] = useState(false);
   const [editingWeek, setEditingWeek] = useState<SyllabusWeek | null>(null);
@@ -418,6 +424,30 @@ export default function TeacherClassDetailPage() {
     }
   };
 
+  const handleSaveClassInfo = async () => {
+    if (!editClassName.trim()) {
+      setToast({ id: 'err', type: 'error', text: 'Class name is required' });
+      return;
+    }
+    setClassInfoSaving(true);
+    try {
+      const updated = await apiCall(`/api/classes/${classId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editClassName.trim(),
+          description: editClassDescription.trim() || null,
+        }),
+      });
+      setClassroom(prev => prev ? { ...prev, name: updated.name, description: updated.description } : prev);
+      setIsEditingClassInfo(false);
+      setToast({ id: 'success', type: 'success', text: 'Class details updated!' });
+    } catch (err) {
+      setToast({ id: 'err', type: 'error', text: err instanceof Error ? err.message : 'Failed to update class' });
+    } finally {
+      setClassInfoSaving(false);
+    }
+  };
+
   const handleRemoveStudent = async (studentId: string, name: string) => {
     if (!confirm(`Remove ${name} from this class?`)) return;
     try {
@@ -476,23 +506,69 @@ export default function TeacherClassDetailPage() {
       {/* Classroom Header Card */}
       <Card hover={false} className="p-6 border border-border bg-surface shadow-sm">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div className="space-y-2 max-w-xl">
-            <h1 className="text-2xl font-extrabold text-text-primary tracking-tight">{classroom.name}</h1>
-            
-            {/* Description Clamper */}
-            <div className="text-xs text-text-secondary leading-relaxed">
-              <p className={isDescCollapsed ? 'line-clamp-2' : ''}>
-                {classroom.description || 'No classroom description provided.'}
-              </p>
-              {classroom.description && classroom.description.length > 120 && (
-                <button
-                  onClick={() => setIsDescCollapsed(!isDescCollapsed)}
-                  className="text-primary hover:underline font-bold mt-1 inline-block focus:outline-none"
-                >
-                  {isDescCollapsed ? 'Read more' : 'Read less'}
-                </button>
-              )}
-            </div>
+          <div className="space-y-2 max-w-xl flex-1">
+            {isEditingClassInfo ? (
+              <div className="space-y-3">
+                <input
+                  value={editClassName}
+                  onChange={(e) => setEditClassName(e.target.value)}
+                  className="w-full text-xl font-extrabold text-text-primary tracking-tight bg-background dark:bg-dark-bg border border-border dark:border-dark-border rounded-lg px-3 py-1.5 focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none"
+                  placeholder="Class name"
+                />
+                <textarea
+                  value={editClassDescription}
+                  onChange={(e) => setEditClassDescription(e.target.value)}
+                  className="w-full text-xs text-text-secondary bg-background dark:bg-dark-bg border border-border dark:border-dark-border rounded-lg px-3 py-2 h-20 resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none"
+                  placeholder="Class description"
+                />
+                <div className="flex gap-2">
+                  <Button onClick={handleSaveClassInfo} loading={classInfoSaving} className="h-8 px-3 text-[11px] font-bold">
+                    Save
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingClassInfo(false)}
+                    className="h-8 px-3 rounded-lg border border-border dark:border-dark-border text-[11px] font-bold text-text-secondary hover:bg-background dark:hover:bg-dark-bg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-extrabold text-text-primary tracking-tight">{classroom.name}</h1>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditClassName(classroom.name);
+                      setEditClassDescription(classroom.description || '');
+                      setIsEditingClassInfo(true);
+                    }}
+                    className="p-1.5 rounded-lg text-text-tertiary hover:text-primary hover:bg-primary-soft transition-colors shrink-0"
+                    title="Edit class details"
+                    aria-label="Edit class details"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Description Clamper */}
+                <div className="text-xs text-text-secondary leading-relaxed">
+                  <p className={isDescCollapsed ? 'line-clamp-2' : ''}>
+                    {classroom.description || 'No classroom description provided.'}
+                  </p>
+                  {classroom.description && classroom.description.length > 120 && (
+                    <button
+                      onClick={() => setIsDescCollapsed(!isDescCollapsed)}
+                      className="text-primary hover:underline font-bold mt-1 inline-block focus:outline-none"
+                    >
+                      {isDescCollapsed ? 'Read more' : 'Read less'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
 
             <div className="pt-2 flex flex-wrap items-center gap-3">
               <span 

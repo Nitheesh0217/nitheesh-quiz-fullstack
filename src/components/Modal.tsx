@@ -13,6 +13,8 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg';
   onSubmit?: () => void;
   isSubmitting?: boolean;
+  submitLabel?: string;
+  submittingLabel?: string;
 }
 
 export function Modal({
@@ -25,6 +27,8 @@ export function Modal({
   size = 'md',
   onSubmit,
   isSubmitting,
+  submitLabel = 'Create',
+  submittingLabel = 'Creating...',
 }: ModalProps) {
   const [shouldRender, setShouldRender] = useState(isOpen);
 
@@ -119,7 +123,7 @@ export function Modal({
                 disabled={isSubmitting}
                 className="flex-1 px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary-hover text-white rounded-lg disabled:opacity-50 transition-all active:scale-[0.98] shadow-sm focus:outline-none cursor-pointer"
               >
-                {isSubmitting ? '⏳ Creating...' : 'Create'}
+                {isSubmitting ? `⏳ ${submittingLabel}` : submitLabel}
               </button>
             </div>
           ) : null}

@@ -112,6 +112,14 @@ export default function AdminDashboard() {
   const [newUserRole, setNewUserRole] = useState<'student' | 'teacher' | 'admin'>('student');
   const [newUserSchoolId, setNewUserSchoolId] = useState('');
 
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [isEditUserSubmitting, setIsEditUserSubmitting] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [editUserName, setEditUserName] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
+  const [editUserRole, setEditUserRole] = useState<'student' | 'teacher' | 'admin'>('student');
+  const [editUserSchoolId, setEditUserSchoolId] = useState('');
+
   // Teacher Groups State
   const [teacherGroups, setTeacherGroups] = useState<TeacherGroupItem[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -270,6 +278,45 @@ export default function AdminDashboard() {
       setToast({ id: 'err', type: 'error', text: err instanceof Error ? err.message : 'Failed to create user' });
     } finally {
       setIsCreateUserSubmitting(false);
+    }
+  };
+
+  const handleOpenEditUser = (item: UserItem) => {
+    setEditingUser(item);
+    setEditUserName(item.name);
+    setEditUserEmail(item.email);
+    setEditUserRole(item.role);
+    setEditUserSchoolId(item.school_id || '');
+    setIsEditUserOpen(true);
+  };
+
+  const handleEditUser = async () => {
+    if (!editingUser) return;
+    if (!editUserName.trim() || !editUserEmail.trim()) {
+      setToast({ id: 'val', type: 'error', text: 'Name and email are required' });
+      return;
+    }
+
+    setIsEditUserSubmitting(true);
+    try {
+      const data = await apiCall(`/api/admin/users/${editingUser.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editUserName,
+          email: editUserEmail,
+          role: editUserRole,
+          school_id: editUserSchoolId || null,
+        }),
+      });
+
+      setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...data } : u));
+      setToast({ id: 'success', type: 'success', text: `${editUserName} was updated successfully.` });
+      setIsEditUserOpen(false);
+      setEditingUser(null);
+    } catch (err) {
+      setToast({ id: 'err', type: 'error', text: err instanceof Error ? err.message : 'Failed to update user' });
+    } finally {
+      setIsEditUserSubmitting(false);
     }
   };
 
@@ -708,6 +755,12 @@ export default function AdminDashboard() {
                                   sideOffset={4}
                                 >
                                   <DropdownMenu.Item
+                                    onClick={() => handleOpenEditUser(item)}
+                                    className="flex items-center px-2 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer focus:outline-none text-text-primary hover:bg-neutral-50 dark:hover:bg-dark-bg focus:bg-neutral-50 dark:focus:bg-dark-bg"
+                                  >
+                                    Edit User
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item
                                     onClick={() => toggleUserSuspension(item.id, item.is_suspended || false)}
                                     className={`flex items-center px-2 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer focus:outline-none ${
                                       item.is_suspended
@@ -914,6 +967,62 @@ export default function AdminDashboard() {
             <select
               value={newUserSchoolId}
               onChange={(e) => setNewUserSchoolId(e.target.value)}
+              className="block w-full h-11 rounded-lg border border-border bg-surface px-3 text-sm text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+            >
+              <option value="">No school</option>
+              {schools.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Modal>
+
+      {/* EDIT USER MODAL */}
+      <Modal
+        isOpen={isEditUserOpen}
+        title="Edit User"
+        onClose={() => setIsEditUserOpen(false)}
+        onSubmit={handleEditUser}
+        isSubmitting={isEditUserSubmitting}
+        submitLabel="Save Changes"
+        submittingLabel="Saving..."
+      >
+        <div className="space-y-4 pt-2">
+          <Input
+            id="edit-user-name"
+            label="Full Name"
+            required
+            value={editUserName}
+            onChange={(e) => setEditUserName(e.target.value)}
+            className="h-11"
+          />
+          <Input
+            id="edit-user-email"
+            label="Email"
+            type="email"
+            required
+            value={editUserEmail}
+            onChange={(e) => setEditUserEmail(e.target.value)}
+            className="h-11"
+          />
+          <div className="space-y-1">
+            <label className="block text-xs font-bold text-text-primary mb-1.5 uppercase tracking-wider">Role</label>
+            <select
+              value={editUserRole}
+              onChange={(e) => setEditUserRole(e.target.value as 'student' | 'teacher' | 'admin')}
+              className="block w-full h-11 rounded-lg border border-border bg-surface px-3 text-sm text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+            >
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-bold text-text-primary mb-1.5 uppercase tracking-wider">School</label>
+            <select
+              value={editUserSchoolId}
+              onChange={(e) => setEditUserSchoolId(e.target.value)}
               className="block w-full h-11 rounded-lg border border-border bg-surface px-3 text-sm text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
             >
               <option value="">No school</option>

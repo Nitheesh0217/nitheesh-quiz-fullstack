@@ -22,3 +22,9 @@ nginx/ssl/*.pem
 *.tsbuildinfo
 demo-assets/
 inspect*.tmp.js
+probe*.js
+# Project is TypeScript-only - any loose root-level .js scratch file (from
+# ad hoc diagnostic/recording scripts) is never real source, except this
+# file's own required flat ESLint config.
+/*.js
+!/eslint.config.js

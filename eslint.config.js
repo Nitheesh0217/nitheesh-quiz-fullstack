@@ -20,7 +20,9 @@ module.exports = [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
       'src/server/db/migrations/**',
-      'inspect*.tmp.js',
+      // Project is TypeScript-only - any loose root-level .js file is an ad
+      // hoc scratch/diagnostic script, never real source.
+      '*.js',
     ],
   },
   ...compat.extends(
