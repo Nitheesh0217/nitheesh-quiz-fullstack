@@ -4,7 +4,13 @@ import { UnauthorizedError } from '../utils/errors';
 import { ACCESS_TOKEN_COOKIE } from '../utils/cookies';
 
 export async function authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
-  const token = request.cookies[ACCESS_TOKEN_COOKIE];
+  let token = request.cookies[ACCESS_TOKEN_COOKIE];
+
+  // Accept Authorization: Bearer <token> for external API integration compatibility
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  }
 
   if (!token) {
     throw new UnauthorizedError('Missing access token');

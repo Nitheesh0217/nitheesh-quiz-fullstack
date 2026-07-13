@@ -21,6 +21,7 @@ describe('authenticate middleware', () => {
       cookies: {
         [ACCESS_TOKEN_COOKIE]: token,
       },
+      headers: {},
     } as unknown as FastifyRequest;
 
     const mockReply = {} as FastifyReply;
@@ -36,6 +37,7 @@ describe('authenticate middleware', () => {
   it('should throw UnauthorizedError when access token cookie is missing', async () => {
     const mockRequest = {
       cookies: {},
+      headers: {},
     } as unknown as FastifyRequest;
 
     const mockReply = {} as FastifyReply;
@@ -48,10 +50,63 @@ describe('authenticate middleware', () => {
       cookies: {
         [ACCESS_TOKEN_COOKIE]: 'invalid-jwt-token',
       },
+      headers: {},
     } as unknown as FastifyRequest;
 
     const mockReply = {} as FastifyReply;
 
     await expect(authenticate(mockRequest, mockReply)).rejects.toThrow(UnauthorizedError);
+  });
+
+  it('should authenticate with a valid Authorization: Bearer token when there is no cookie', async () => {
+    const token = signAccessToken(mockPayload);
+    const mockRequest = {
+      cookies: {},
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    } as unknown as FastifyRequest;
+
+    const mockReply = {} as FastifyReply;
+
+    await expect(authenticate(mockRequest, mockReply)).resolves.not.toThrow();
+    expect(mockRequest.user?.id).toBe(mockPayload.sub);
+  });
+
+  it('should prefer a valid Authorization: Bearer token over a cookie when both are present', async () => {
+    const cookieToken = signAccessToken(mockPayload);
+    const bearerPayload: JwtPayload = { ...mockPayload, sub: 'user-uuid-bearer' };
+    const bearerToken = signAccessToken(bearerPayload);
+
+    const mockRequest = {
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: cookieToken,
+      },
+      headers: {
+        authorization: `Bearer ${bearerToken}`,
+      },
+    } as unknown as FastifyRequest;
+
+    const mockReply = {} as FastifyReply;
+
+    await expect(authenticate(mockRequest, mockReply)).resolves.not.toThrow();
+    expect(mockRequest.user?.id).toBe(bearerPayload.sub);
+  });
+
+  it('should fall back to the cookie when the Authorization header is present but not a Bearer token', async () => {
+    const token = signAccessToken(mockPayload);
+    const mockRequest = {
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: token,
+      },
+      headers: {
+        authorization: 'Basic somecredentials',
+      },
+    } as unknown as FastifyRequest;
+
+    const mockReply = {} as FastifyReply;
+
+    await expect(authenticate(mockRequest, mockReply)).resolves.not.toThrow();
+    expect(mockRequest.user?.id).toBe(mockPayload.sub);
   });
 });
