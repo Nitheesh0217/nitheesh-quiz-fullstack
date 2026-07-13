@@ -860,22 +860,14 @@ export default function AdminDashboard() {
                 <div key={group.id} className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-neutral-50/50 dark:hover:bg-slate-800/10 transition-colors">
                   <button
                     onClick={() => handleOpenGroupDetail(group.id)}
-                    className="text-left flex-1 min-w-0"
+                    className="text-left flex-1 min-w-0 group cursor-pointer"
                   >
-                    <p className="font-semibold text-text-primary text-xs">{group.name}</p>
+                    <p className="font-semibold text-text-primary text-xs group-hover:text-primary transition-colors">{group.name}</p>
                     <p className="text-[10px] text-text-tertiary font-mono mt-0.5">
                       {schools.find(s => s.id === group.school_id)?.name || 'Unknown school'}
                     </p>
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      onClick={() => handleOpenGroupDetail(group.id)}
-                      variant="secondary"
-                      size="sm"
-                      className="text-[10px] font-bold px-2.5 h-7"
-                    >
-                      Manage
-                    </Button>
                     <button
                       onClick={() => handleDeleteGroup(group.id, group.name)}
                       className="p-1.5 rounded text-text-tertiary hover:text-danger hover:bg-danger-soft transition-colors"
