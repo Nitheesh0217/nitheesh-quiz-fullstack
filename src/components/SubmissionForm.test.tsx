@@ -76,6 +76,19 @@ describe('SubmissionForm', () => {
     expect(screen.getByText('Click to select or drag & drop file')).toBeDefined();
   });
 
+  it('opens the hidden file input when the upload zone is clicked', () => {
+    setup();
+    render(<SubmissionForm assignmentId="a1" classId="c1" onSuccess={vi.fn()} />);
+
+    const input = document.getElementById('file-input') as HTMLInputElement;
+    const clickSpy = vi.spyOn(input, 'click').mockImplementation(() => {});
+    const dropzone = screen.getByText('Click to select or drag & drop file').closest('div')!.parentElement!;
+
+    fireEvent.click(dropzone);
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts a dropped file via drag and drop', () => {
     setup();
     render(<SubmissionForm assignmentId="a1" classId="c1" onSuccess={vi.fn()} />);
@@ -140,6 +153,32 @@ describe('SubmissionForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit Work' }));
 
     await waitFor(() => expect(screen.getByText('Submission window closed')).toBeDefined());
+  });
+
+  it('shows a file encoding error when FileReader returns a non-base64 result', async () => {
+    setup();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const OriginalFileReader = global.FileReader;
+    class InvalidDataUrlReader {
+      onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      readAsDataURL() {
+        this.onload?.({ target: { result: 'plain-text-data' } } as ProgressEvent<FileReader>);
+      }
+    }
+    global.FileReader = InvalidDataUrlReader as unknown as typeof FileReader;
+
+    render(<SubmissionForm assignmentId="a1" classId="c1" onSuccess={vi.fn()} />);
+    const file = new File(['content'], 'essay.txt', { type: 'text/plain' });
+    const input = document.getElementById('file-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Work' }));
+
+    await waitFor(() => expect(screen.getByText('Invalid base64 encoding')).toBeDefined());
+    expect(mockApiCall).not.toHaveBeenCalled();
+
+    global.FileReader = OriginalFileReader;
   });
 
   it('disables the submit button until content is provided', () => {

@@ -108,6 +108,35 @@ describe('GradeDetailPage', () => {
     await waitFor(() => expect(screen.getByText(/Graded by Instructor/)).toBeDefined());
   });
 
+  it('renders grade badges below the A threshold', async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: STUDENT, isLoading: false, login: vi.fn(), logout: vi.fn(), hasRole: () => true });
+
+    async function renderWithScore(score: number) {
+      mockApiCall.mockImplementation((endpoint: string) => {
+        if (endpoint === '/api/grades?student_id=student-1') {
+          return Promise.resolve([{ ...GRADES[0], total_score: score }]);
+        }
+        return routeApiCall(endpoint);
+      });
+      const { unmount } = render(<GradeDetailPage />);
+      await waitFor(() => expect(screen.getByText('Essay')).toBeDefined());
+      return unmount;
+    }
+
+    let unmount = await renderWithScore(40);
+    expect(screen.getByText('80%')).toBeDefined();
+    unmount();
+    cleanup();
+
+    unmount = await renderWithScore(35);
+    expect(screen.getByText('70%')).toBeDefined();
+    unmount();
+    cleanup();
+
+    await renderWithScore(30);
+    expect(screen.getByText('60%')).toBeDefined();
+  });
+
   it('handles a fetch failure by logging and stops loading without a grade', async () => {
     mockApiCall.mockRejectedValue(new Error('network error'));
     vi.spyOn(console, 'error').mockImplementation(() => {});

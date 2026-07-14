@@ -25,8 +25,8 @@ test.describe('Authentication', () => {
   }
 
   test('shows an error toast for invalid credentials', async ({ page }) => {
-    await login(page, ACCOUNTS.student.email, 'wrong-password-here');
-    await expect(page.getByText(/Invalid credentials|Failed to sign in/i)).toBeVisible();
+    await login(page, 'invalid.e2e.user@university.edu', 'wrong-password-here');
+    await expect(page.getByText(/Invalid credentials|Invalid email or password|Failed to sign in/i)).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 

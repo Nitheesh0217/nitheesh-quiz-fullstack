@@ -6,10 +6,9 @@ import { test, expect } from '@playwright/test';
 const STUDENT = { email: 'alex.johnson@university.edu', password: 'StudentPass123!' };
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/login');
-  await page.getByLabel(/School Email Address/i).fill(STUDENT.email);
-  await page.getByLabel(/Password/i).fill(STUDENT.password);
-  await page.getByRole('button', { name: /Sign In/i }).click();
+  const response = await page.request.post('/api/auth/login', { data: STUDENT });
+  expect(response.ok()).toBeTruthy();
+  await page.goto('/dashboard/student');
   await expect(page).toHaveURL(/\/dashboard\/student/, { timeout: 10_000 });
 });
 

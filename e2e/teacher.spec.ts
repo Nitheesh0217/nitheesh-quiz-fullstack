@@ -6,10 +6,9 @@ import { test, expect } from '@playwright/test';
 const TEACHER = { email: 'alice.thompson@university.edu', password: 'TeacherPass123!' };
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/login');
-  await page.getByLabel(/School Email Address/i).fill(TEACHER.email);
-  await page.getByLabel(/Password/i).fill(TEACHER.password);
-  await page.getByRole('button', { name: /Sign In/i }).click();
+  const response = await page.request.post('/api/auth/login', { data: TEACHER });
+  expect(response.ok()).toBeTruthy();
+  await page.goto('/dashboard/teacher');
   await expect(page).toHaveURL(/\/dashboard\/teacher/, { timeout: 10_000 });
 });
 
@@ -29,6 +28,9 @@ test.describe('Teacher dashboard flow', () => {
     test.skip(count === 0, 'No pending submissions to grade for this teacher account');
 
     await gradeButtons.first().click();
+    await expect(page).toHaveURL(/\/dashboard\/teacher\/assignments\/.+/, { timeout: 10_000 });
+    await page.getByRole('button', { name: 'Grade', exact: true }).first().click();
+    await expect(page.locator('#grading-form')).toBeVisible({ timeout: 10_000 });
 
     // Fill every rubric score input with its max allowed points.
     const scoreInputs = page.locator('#grading-form input[type="number"]');

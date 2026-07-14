@@ -182,6 +182,9 @@ describe('SchoolDetailPage', () => {
     fireEvent.click(screen.getByText('Biology 101'));
     expect(screen.getByText('Alex Johnson')).toBeDefined();
     expect(screen.getByText('Maya Patel')).toBeDefined();
+
+    fireEvent.click(screen.getByText('Biology 101'));
+    await waitFor(() => expect(screen.queryByText('Maya Patel')).toBeNull());
   });
 
   it('creates a class only after valid input and handles create failures', async () => {
