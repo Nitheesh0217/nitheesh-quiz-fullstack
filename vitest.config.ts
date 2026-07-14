@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
           'src/server/db/migrations/**',
           'src/server/server.ts',
           'src/server/db/migrate.ts',
+          'src/server/db/seedE2e.ts',
           'src/server/db/types.ts',
           'src/server/types/**',
           'src/**/*.test.{ts,tsx}',
