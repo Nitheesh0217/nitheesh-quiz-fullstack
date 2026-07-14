@@ -142,13 +142,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Write root .env for e2e docker compose
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+        run: |
+          printf '%s\n' \
+            "JWT_SECRET=${JWT_SECRET:-ci-e2e-jwt-secret-please-replace-me-with-64-chars-0000000000}" \
+            "JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-ci-e2e-refresh-secret-please-replace-me-with-64-chars-000000}" \
+            "COOKIE_SECRET=${COOKIE_SECRET:-ci-e2e-cookie-secret-please-replace-16-chars}" \
+            > .env
+
       - name: Start full stack
         run: |
-          cat > .env <<EOF
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
-          COOKIE_SECRET=${{ secrets.COOKIE_SECRET }}
-          EOF
           docker compose up -d
 
       - name: Wait for app to be healthy
@@ -181,15 +188,23 @@ jobs:
 
       - name: Stop full stack
         if: always()
-        run: docker compose down
+        run: |
+          if [ ! -f .env ]; then
+            printf '%s\n' \
+              "JWT_SECRET=ci-e2e-jwt-secret-please-replace-me-with-64-chars-0000000000" \
+              "JWT_REFRESH_SECRET=ci-e2e-refresh-secret-please-replace-me-with-64-chars-000000" \
+              "COOKIE_SECRET=ci-e2e-cookie-secret-please-replace-16-chars" \
+              > .env
+          fi
+          docker compose down
 
 # Required GitHub Secrets (Settings -> Secrets and variables -> Actions -> New repository secret):
 # DOCKERHUB_USERNAME  - your Docker Hub username
 # DOCKERHUB_TOKEN     - Docker Hub access token (not your password)
 #                       Create at: hub.docker.com -> Account Settings -> Security -> New Access Token
-# JWT_SECRET          - production JWT signing secret, 32+ chars (used by the e2e job to boot the stack)
-# JWT_REFRESH_SECRET  - production JWT refresh-token secret, 32+ chars
-# COOKIE_SECRET       - production cookie signing secret, 16+ chars
+# JWT_SECRET          - optional production-like JWT signing secret for e2e; CI uses a throwaway fallback if absent
+# JWT_REFRESH_SECRET  - optional production-like JWT refresh-token secret for e2e; CI uses a throwaway fallback if absent
+# COOKIE_SECRET       - optional production-like cookie signing secret for e2e; CI uses a throwaway fallback if absent
 #
 # Note: the Playwright steps above are still guarded with
 # hashFiles('playwright.config.ts') so the job degrades gracefully if that
