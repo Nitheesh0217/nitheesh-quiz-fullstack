@@ -100,6 +100,43 @@ describe('ResetPasswordPage', () => {
     vi.useRealTimers();
   });
 
+  it('falls back to a default message on a non-400 failure with no error field', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+    render(<ResetPasswordPage />);
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Update password/i }));
+
+    await waitFor(() => expect(screen.getByText('Failed to reset password')).toBeDefined());
+  });
+
+  it('shows a default failure toast when a non-Error value is thrown', async () => {
+    global.fetch = vi.fn().mockRejectedValue('network exploded');
+    render(<ResetPasswordPage />);
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Update password/i }));
+
+    await waitFor(() => expect(screen.getByText('Failed to reset password')).toBeDefined());
+  });
+
+  it('shows an inline validation error for a too-short new password once touched', () => {
+    render(<ResetPasswordPage />);
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'short' } });
+    expect(screen.getByText('Password must be at least 8 characters long')).toBeDefined();
+  });
+
+  it('dismisses the toast when the close button is clicked', async () => {
+    render(<ResetPasswordPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Update password/i }));
+
+    await waitFor(() => expect(screen.getByText('Password must be at least 8 characters long')).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: '✕' }));
+    expect(screen.queryByText('Password must be at least 8 characters long')).toBeNull();
+  });
+
   it('toggles password visibility for both fields', () => {
     render(<ResetPasswordPage />);
     const newPassword = screen.getByLabelText('New Password') as HTMLInputElement;

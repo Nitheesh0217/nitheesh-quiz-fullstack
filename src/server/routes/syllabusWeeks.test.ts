@@ -221,6 +221,26 @@ describe('Syllabus Weeks Routes Integration', () => {
     expect(body.video_links).toEqual(['Updated video']);
   });
 
+  it('should update the remaining optional fields of a syllabus week (week_number, topics, readings, linked_assignment_id)', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/syllabus-weeks/${weekId}`,
+      headers: { cookie: `${ACCESS_TOKEN_COOKIE}=${teacherToken}` },
+      payload: {
+        week_number: 2,
+        topics: 'Advanced topics',
+        readings: 'Chapter 2',
+        linked_assignment_id: assignmentId,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.week_number).toBe(2);
+    expect(body.topics).toBe('Advanced topics');
+    expect(body.readings).toBe('Chapter 2');
+    expect(body.linked_assignment_id).toBe(assignmentId);
+  });
+
   it('should deny updating a syllabus week for a non-owner teacher', async () => {
     const response = await app.inject({
       method: 'PUT',

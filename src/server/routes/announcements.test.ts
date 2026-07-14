@@ -189,6 +189,19 @@ describe('Class Announcements Routes Integration', () => {
     expect(response.json().title).toBe('Welcome! (Updated)');
   });
 
+  it('should update only the content of an announcement, leaving the title untouched', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/announcements/${announcementId}`,
+      headers: { cookie: `${ACCESS_TOKEN_COOKIE}=${teacherToken}` },
+      payload: { content: 'Updated content only.' },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.content).toBe('Updated content only.');
+    expect(body.title).toBe('Welcome! (Updated)');
+  });
+
   it('should deny updating an announcement for a non-owner teacher', async () => {
     const response = await app.inject({
       method: 'PUT',

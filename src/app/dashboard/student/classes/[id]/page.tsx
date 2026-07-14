@@ -313,7 +313,14 @@ export default function StudentClassDetailPage() {
   }
 
   if (!user) return null;
-  if (!classroom) return <div className="p-6 text-center text-text-secondary animate-fadeIn">Classroom not found</div>;
+  if (!classroom) {
+    return (
+      <div className="p-6 text-center text-text-secondary animate-fadeIn">
+        Classroom not found
+        <Toast message={toast} onClose={() => setToast(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">

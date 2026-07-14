@@ -195,6 +195,94 @@ describe('AdminDashboard', () => {
     await waitFor(() => expect(screen.getAllByText('Suspended').length).toBe(1));
   });
 
+  it('shows an error toast when updating a user suspension fails', async () => {
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/users/s1/suspend' && options?.method === 'PATCH') {
+        return Promise.reject(new Error('Suspension service unavailable'));
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Suspend User'));
+
+    await waitFor(() => expect(screen.getByText('Suspension service unavailable')).toBeDefined());
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+  });
+
+  it('unsuspends a suspended user and shows the lifted status message', async () => {
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/users/s1/suspend' && options?.method === 'PATCH') {
+        return Promise.resolve({});
+      }
+      if (endpoint === '/api/admin/users') {
+        return Promise.resolve([
+          { id: 's1', name: 'Alex Johnson', email: 'alex@school.edu', role: 'student', is_suspended: true },
+        ]);
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Reactivate User'));
+
+    await waitFor(() => expect(screen.getByText('User suspension lifted successfully.')).toBeDefined());
+    expect(mockApiCall).toHaveBeenCalledWith(
+      '/api/admin/users/s1/suspend',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ is_suspended: false }) })
+    );
+  });
+
+  it('falls back to the default suspension error when the API rejects a non-Error value', async () => {
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/users/s1/suspend' && options?.method === 'PATCH') {
+        return Promise.reject('offline');
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Suspend User'));
+
+    await waitFor(() => expect(screen.getByText('Failed to update user suspension status')).toBeDefined());
+  });
+
   it('shows an error banner when the admin workspace fails to load unexpectedly', async () => {
     mockApiCall.mockImplementation((endpoint: string) => {
       // Returning a non-array from /api/admin/users makes the subsequent
@@ -464,6 +552,34 @@ describe('AdminDashboard', () => {
     confirmSpy.mockRestore();
   });
 
+  it('shows the default fallback message when adding a teacher group member rejects with a non-Error', async () => {
+    const GROUP = { id: 'g1', school_id: 'sch-1', name: 'Math Dept', members: [] as Array<{ id: string; name: string; email: string }> };
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'sch-1', name: 'Math Dept' }]);
+      if (endpoint === '/api/admin/teacher-groups/g1' && !options) return Promise.resolve(GROUP);
+      if (endpoint === '/api/admin/teacher-groups/g1/members' && options?.method === 'POST') return Promise.reject('boom');
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
+
+    fireEvent.click(screen.getByText('Math Dept'));
+    await waitFor(() => expect(screen.getByText('No teachers in this group yet.')).toBeDefined());
+
+    fireEvent.change(screen.getByDisplayValue('Select a teacher'), { target: { value: 't1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(screen.getByText('Failed to add teacher to group')).toBeDefined());
+  });
+
   it('shows an error toast when creating a user fails', async () => {
     mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
       if (endpoint === '/api/admin/users' && options?.method === 'POST') return Promise.reject(new Error('Email already exists'));
@@ -609,5 +725,482 @@ describe('AdminDashboard', () => {
 
     render(<AdminDashboard />);
     await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+  });
+
+  it('aggregates pending submission counts across classes, assignments, and submissions', async () => {
+    mockApiCall.mockImplementation((endpoint: string) => {
+      if (endpoint === '/api/classes') return Promise.resolve([{ id: 'c1', name: 'Biology' }]);
+      if (endpoint === '/api/classes/c1/assignments') return Promise.resolve([{ id: 'a1', title: 'Essay' }]);
+      if (endpoint === '/api/assignments/a1/submissions') {
+        return Promise.resolve([
+          { id: 'sub1', status: 'submitted' },
+          { id: 'sub2', status: 'graded' },
+          { id: 'sub3', status: 'submitted' },
+        ]);
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Pending Grading')).toBeDefined());
+    // Only 2 of the 3 submissions for the one assignment are 'submitted'.
+    await waitFor(() => expect(screen.getByText('2')).toBeDefined());
+  });
+
+  it('defaults is_suspended to false when the API omits the field entirely', async () => {
+    mockApiCall.mockImplementation((endpoint: string) => {
+      if (endpoint === '/api/admin/users') {
+        return Promise.resolve([{ id: 'u9', name: 'No Field User', email: 'nf@school.edu', role: 'student' }]);
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('No Field User')).toBeDefined());
+    expect(screen.getByText('Active')).toBeDefined();
+  });
+
+  it('filters the users table by role tab and renders a distinct badge for the admin role', async () => {
+    mockApiCall.mockImplementation((endpoint: string) => {
+      if (endpoint === '/api/admin/users') {
+        return Promise.resolve([...USERS, { id: 'a1', name: 'Dana Admin', email: 'dana@school.edu', role: 'admin', is_suspended: false }]);
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Dana Admin')).toBeDefined());
+    // Renders with the 'danger' badge variant, distinct from student/teacher.
+    expect(screen.getByText('admin')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'teachers' }));
+    expect(screen.queryByText('Alex Johnson')).toBeNull();
+    expect(screen.queryByText('Dana Admin')).toBeNull();
+    expect(screen.getByText('Alice Thompson')).toBeDefined();
+  });
+
+  it("shows 'Unknown school' when a teacher group references a school that no longer exists", async () => {
+    mockApiCall.mockImplementation((endpoint: string) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'missing-school', name: 'Orphan Dept' }]);
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Orphan Dept')).toBeDefined());
+    expect(screen.getByText('Unknown school')).toBeDefined();
+  });
+
+  it('opens the edit user modal prefilled, edits every field, validates required fields, and saves successfully', async () => {
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/users/s1' && options?.method === 'PUT') {
+        return Promise.resolve({ name: 'Alexandra Johnson', email: 'alexandra@school.edu', role: 'teacher', school_id: 'sch-1' });
+      }
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Edit User'));
+
+    expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe('Alex Johnson');
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('alex@school.edu');
+
+    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(screen.getByText('Name and email are required')).toBeDefined());
+
+    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Alexandra Johnson' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alexandra@school.edu' } });
+    fireEvent.change(screen.getByDisplayValue('Student'), { target: { value: 'teacher' } });
+    fireEvent.change(screen.getByDisplayValue('No school'), { target: { value: 'sch-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(screen.getByText('Alexandra Johnson was updated successfully.')).toBeDefined());
+    expect(mockApiCall).toHaveBeenCalledWith('/api/admin/users/s1', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ name: 'Alexandra Johnson', email: 'alexandra@school.edu', role: 'teacher', school_id: 'sch-1' }),
+    }));
+  });
+
+  it('shows an error toast when editing a user fails', async () => {
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/users/s1' && options?.method === 'PUT') return Promise.reject(new Error('Email already in use'));
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Edit User'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(screen.getByText('Email already in use')).toBeDefined());
+  });
+
+  it('closes the register-school, create-user, edit-user, and create-group modals via Cancel without submitting', async () => {
+    mockApiCall.mockImplementation(routeApiCall);
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    const { container } = render(<ChromeHarness />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+
+    // Modal.tsx keeps content mounted through its CSS close transition, so
+    // fire transitionend directly - otherwise the next modal opened in this
+    // test would collide with this one's still-mounted (but hidden) fields.
+    const closeViaCancel = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      fireEvent.transitionEnd(container.querySelector('.fixed.inset-0.z-40')!);
+    };
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register School' }));
+    fireEvent.change(screen.getByLabelText('School Name'), { target: { value: 'Ignored Academy' } });
+    closeViaCancel();
+    expect(screen.queryByLabelText('School Name')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /New User/i }));
+    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Ignored User' } });
+    closeViaCancel();
+    expect(screen.queryByLabelText('Full Name')).toBeNull();
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Edit User'));
+    closeViaCancel();
+    expect(screen.queryByRole('button', { name: 'Save Changes' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /New Group/i }));
+    fireEvent.change(screen.getByLabelText('Group Name'), { target: { value: 'Ignored Group' } });
+    closeViaCancel();
+    expect(screen.queryByLabelText('Group Name')).toBeNull();
+
+    expect(mockApiCall).not.toHaveBeenCalledWith('/api/admin/schools', expect.objectContaining({ method: 'POST' }));
+    expect(mockApiCall).not.toHaveBeenCalledWith('/api/admin/users', expect.objectContaining({ method: 'POST' }));
+    expect(mockApiCall).not.toHaveBeenCalledWith('/api/admin/users/s1', expect.objectContaining({ method: 'PUT' }));
+    expect(mockApiCall).not.toHaveBeenCalledWith('/api/admin/teacher-groups', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('does nothing when the delete-teacher-group confirmation dialog is cancelled', async () => {
+    mockApiCall.mockImplementation((endpoint: string) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'sch-1', name: 'Math Dept' }]);
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
+
+    fireEvent.click(screen.getByTitle('Delete group'));
+    expect(mockApiCall).not.toHaveBeenCalledWith('/api/admin/teacher-groups/g1', expect.objectContaining({ method: 'DELETE' }));
+    expect(screen.getByText('Math Dept')).toBeDefined();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('shows an error toast when adding a teacher to a group fails', async () => {
+    const GROUP = { id: 'g1', school_id: 'sch-1', name: 'Math Dept', members: [] as Array<{ id: string; name: string; email: string }> };
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'sch-1', name: 'Math Dept' }]);
+      if (endpoint === '/api/admin/teacher-groups/g1' && !options) return Promise.resolve(GROUP);
+      if (endpoint === '/api/admin/teacher-groups/g1/members' && options?.method === 'POST') return Promise.reject(new Error('Teacher already in group'));
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
+    fireEvent.click(screen.getByText('Math Dept'));
+    await waitFor(() => expect(screen.getByText('No teachers in this group yet.')).toBeDefined());
+
+    fireEvent.change(screen.getByDisplayValue('Select a teacher'), { target: { value: 't1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.getByText('Teacher already in group')).toBeDefined());
+  });
+
+  // handleRemoveMember's own `if (!selectedGroup) return;` guard (page.tsx
+  // line ~400) is unreachable through the UI: the "Remove from group" button
+  // only renders inside `{selectedGroup && (...)}`, so selectedGroup is
+  // always truthy at the moment the handler is invoked. Covered instead
+  // below is the guard in handleAddMember (reachable via an empty selection)
+  // and the modal's dedicated onClose path via the backdrop.
+  it('does nothing when Add is clicked with no teacher selected, and closes the group detail modal via backdrop click', async () => {
+    const GROUP = { id: 'g1', school_id: 'sch-1', name: 'Math Dept', members: [] as Array<{ id: string; name: string; email: string }> };
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'sch-1', name: 'Math Dept' }]);
+      if (endpoint === '/api/admin/teacher-groups/g1' && !options) return Promise.resolve(GROUP);
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    const { container } = render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
+    fireEvent.click(screen.getByText('Math Dept'));
+    await waitFor(() => expect(screen.getByText('No teachers in this group yet.')).toBeDefined());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(mockApiCall).not.toHaveBeenCalledWith('/api/admin/teacher-groups/g1/members', expect.anything());
+
+    // The modal's own onClose prop (distinct from the footer "Close" button)
+    // resets selectedGroup, so the body content unmounts immediately.
+    fireEvent.click(container.querySelector('.fixed.inset-0.z-40')!);
+    expect(screen.queryByText('No teachers in this group yet.')).toBeNull();
+  });
+
+  it('ignores a member-removal response that resolves after the group detail modal has been closed', async () => {
+    let resolveRemove: () => void = () => {};
+    const removePromise = new Promise<void>((resolve) => { resolveRemove = resolve; });
+    const GROUP = { id: 'g1', school_id: 'sch-1', name: 'Math Dept', members: [{ id: 't1', name: 'Alice Thompson', email: 'alice@school.edu' }] };
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'sch-1', name: 'Math Dept' }]);
+      if (endpoint === '/api/admin/teacher-groups/g1' && !options) return Promise.resolve(GROUP);
+      if (endpoint === '/api/admin/teacher-groups/g1/members/t1' && options?.method === 'DELETE') return removePromise.then(() => ({}));
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
+    fireEvent.click(screen.getByText('Math Dept'));
+    // Alice Thompson also appears in the underlying users register table,
+    // so expect 2 matches once the modal has actually rendered the member.
+    await waitFor(() => expect(screen.getAllByText('alice@school.edu').length).toBe(2));
+
+    fireEvent.click(screen.getByTitle('Remove from group'));
+    // Close the group detail modal (selectedGroup -> null) before the DELETE
+    // resolves: the pending functional setSelectedGroup update must then see
+    // a null `prev` and no-op instead of re-adding stale group data.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    resolveRemove();
+    await waitFor(() => expect(screen.getByText('Teacher removed from group.')).toBeDefined());
+  });
+
+  it('falls back to default error messages when school/user/edit-user/group creation reject non-Error values', async () => {
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/schools' && options?.method === 'POST') return Promise.reject('boom');
+      if (endpoint === '/api/admin/users' && options?.method === 'POST') return Promise.reject('boom');
+      if (endpoint === '/api/admin/users/s1' && options?.method === 'PUT') return Promise.reject('boom');
+      if (endpoint === '/api/admin/teacher-groups' && options?.method === 'POST') return Promise.reject('boom');
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    const { container } = render(<ChromeHarness />);
+    await waitFor(() => expect(screen.getByText('Alex Johnson')).toBeDefined());
+    const closeViaCancel = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      fireEvent.transitionEnd(container.querySelector('.fixed.inset-0.z-40')!);
+    };
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register School' }));
+    fireEvent.change(screen.getByLabelText('School Name'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(screen.getByText('Failed to register school')).toBeDefined());
+    closeViaCancel();
+
+    fireEvent.click(screen.getByRole('button', { name: /New User/i }));
+    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'X' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'x@x.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'longenough123' } });
+    fireEvent.change(screen.getByDisplayValue('Student'), { target: { value: 'teacher' } });
+    fireEvent.change(screen.getByDisplayValue('No school'), { target: { value: 'sch-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(screen.getByText('Failed to create user')).toBeDefined());
+    closeViaCancel();
+
+    const user = userEvent.setup();
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Edit User'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(screen.getByText('Failed to update user')).toBeDefined());
+    closeViaCancel();
+
+    fireEvent.click(screen.getByRole('button', { name: /New Group/i }));
+    fireEvent.change(screen.getByLabelText('Group Name'), { target: { value: 'X' } });
+    fireEvent.change(screen.getByDisplayValue('Select a school'), { target: { value: 'sch-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(screen.getByText('Failed to create teacher group')).toBeDefined());
+  });
+
+  it('falls back to default error messages when group-detail, remove-member, delete-group, and delete-user actions reject non-Error values', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let groupDetailCalls = 0;
+    const GROUP = { id: 'g1', school_id: 'sch-1', name: 'Math Dept', members: [{ id: 't1', name: 'Alice Thompson', email: 'alice@school.edu' }] };
+    mockApiCall.mockImplementation((endpoint: string, options?: RequestInit) => {
+      if (endpoint === '/api/admin/teacher-groups') return Promise.resolve([{ id: 'g1', school_id: 'sch-1', name: 'Math Dept' }]);
+      if (endpoint === '/api/admin/teacher-groups/g1' && !options) {
+        groupDetailCalls += 1;
+        // Fails once with a non-Error value to exercise the fallback
+        // message, then succeeds on retry so the test can proceed.
+        return groupDetailCalls === 1 ? Promise.reject('boom') : Promise.resolve(GROUP);
+      }
+      if (endpoint === '/api/admin/teacher-groups/g1/members/t1' && options?.method === 'DELETE') return Promise.reject('boom');
+      if (endpoint === '/api/admin/teacher-groups/g1' && options?.method === 'DELETE') return Promise.reject('boom');
+      if (endpoint === '/api/admin/users/s1' && options?.method === 'DELETE') return Promise.reject('boom');
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Math Dept')).toBeDefined());
+
+    fireEvent.click(screen.getByText('Math Dept'));
+    await waitFor(() => expect(screen.getByText('Failed to load group details')).toBeDefined());
+
+    fireEvent.click(screen.getByText('Math Dept'));
+    // Alice Thompson also appears in the underlying users register table
+    // (see the similar assertion further up this file), so expect 2.
+    await waitFor(() => expect(screen.getAllByText('alice@school.edu').length).toBe(2));
+
+    fireEvent.click(screen.getByTitle('Remove from group'));
+    await waitFor(() => expect(screen.getByText('Failed to remove teacher from group')).toBeDefined());
+
+    fireEvent.click(screen.getByTitle('Delete group'));
+    await waitFor(() => expect(screen.getByText('Failed to delete "Math Dept"')).toBeDefined());
+
+    const row = screen.getByText('Alex Johnson').closest('tr')!;
+    const user = userEvent.setup();
+    await user.click(row.querySelector('button') as HTMLButtonElement);
+    await user.click(await screen.findByText('Delete User'));
+    await waitFor(() => expect(screen.getByText('Failed to delete Alex Johnson')).toBeDefined());
+
+    confirmSpy.mockRestore();
+  });
+
+  it('shows the default fallback message when the workspace fails to load with a non-Error thrown value', async () => {
+    mockApiCall.mockImplementation((endpoint: string) => {
+      // A users payload with a custom `.map` that throws a plain string
+      // (not an Error instance) exercises the `err instanceof Error` false
+      // branch of the outer catch in loadAdminWorkspace.
+      if (endpoint === '/api/admin/users') return Promise.resolve({ map: () => { throw 'boom'; } });
+      return routeApiCall(endpoint);
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Failed to load administrative metrics')).toBeDefined());
+  });
+
+  it('dismisses the toast immediately when its close button is clicked', async () => {
+    mockApiCall.mockImplementation(routeApiCall);
+    vi.mocked(useAuth).mockReturnValue({
+      user: ADMIN_USER,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: (r) => r === 'admin',
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+
+    render(<AdminDashboard />);
+    await waitFor(() => expect(screen.getByText('Concentrate Academy')).toBeDefined());
+
+    fireEvent.click(screen.getByTitle('Copy School ID'));
+    await waitFor(() => expect(screen.getByText('School ID copied to clipboard')).toBeDefined());
+
+    fireEvent.click(screen.getByRole('button', { name: '✕' }));
+    expect(screen.queryByText('School ID copied to clipboard')).toBeNull();
   });
 });

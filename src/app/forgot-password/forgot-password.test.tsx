@@ -56,4 +56,41 @@ describe('ForgotPasswordPage', () => {
 
     await waitFor(() => expect(screen.getByText('network down')).toBeDefined());
   });
+
+  it('falls back to a default message on a 429 response with no error field', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ status: 429, json: async () => ({}) });
+    render(<ForgotPasswordPage />);
+
+    fireEvent.change(screen.getByLabelText(/School Email Address/i), { target: { value: 'a@school.edu' } });
+    fireEvent.click(screen.getByRole('button', { name: /Send reset link/i }));
+
+    await waitFor(() => expect(screen.getByText('Too many attempts. Please try again later.')).toBeDefined());
+  });
+
+  it('shows a default failure toast when a non-Error value is thrown', async () => {
+    global.fetch = vi.fn().mockRejectedValue('network exploded');
+    render(<ForgotPasswordPage />);
+
+    fireEvent.change(screen.getByLabelText(/School Email Address/i), { target: { value: 'a@school.edu' } });
+    fireEvent.click(screen.getByRole('button', { name: /Send reset link/i }));
+
+    await waitFor(() => expect(screen.getByText('Something went wrong. Please try again.')).toBeDefined());
+  });
+
+  it('shows an inline validation error for an invalid email format once touched', () => {
+    render(<ForgotPasswordPage />);
+    fireEvent.change(screen.getByLabelText(/School Email Address/i), { target: { value: 'not-an-email' } });
+    expect(screen.getByText('Invalid school email address')).toBeDefined();
+  });
+
+  it('dismisses the toast when the close button is clicked', async () => {
+    global.fetch = vi.fn();
+    render(<ForgotPasswordPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Send reset link/i }));
+    await waitFor(() => expect(screen.getByText('Invalid school email address')).toBeDefined());
+
+    fireEvent.click(screen.getByRole('button', { name: '✕' }));
+    expect(screen.queryByText('Invalid school email address')).toBeNull();
+  });
 });

@@ -180,6 +180,24 @@ describe('Classes Routes Integration', () => {
     expect(JSON.parse(response.body).name).toBe('Introduction to Physics (Admin Edit)');
   });
 
+  it('should update only the description of a class, leaving the name unchanged (Teacher, owner)', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/classes/${classId}`,
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${teacherToken}`,
+      },
+      payload: {
+        description: 'Only the description changed this time.',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.description).toBe('Only the description changed this time.');
+    expect(body.name).toBe('Introduction to Physics (Admin Edit)');
+  });
+
   it('should deny updating a class for a non-owner teacher', async () => {
     const otherTeacher = await db
       .insertInto('users')
@@ -286,6 +304,40 @@ describe('Classes Routes Integration', () => {
     expect(body.teacher_id).toBe(teacherId);
 
     await db.deleteFrom('classes').where('id', '=', body.id).execute();
+  });
+
+  it('should reject a teacher with no school assigned from creating a class', async () => {
+    const pwHash = await hashPassword('password123');
+    const teacherNoSchool = await db
+      .insertInto('users')
+      .values({
+        email: 'teacher-no-school-class@school.edu',
+        password_hash: pwHash,
+        name: 'No School Teacher',
+        role: 'teacher',
+        school_id: null,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    const token = signAccessToken({ sub: teacherNoSchool.id, email: teacherNoSchool.email, role: 'teacher', school_id: null, token_version: 0, onboarding_completed: true });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/classes',
+      headers: {
+        cookie: `${ACCESS_TOKEN_COOKIE}=${token}`,
+      },
+      payload: {
+        school_id: schoolId,
+        name: 'Class Without School',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error).toContain('no school assigned');
+
+    // Clean up
+    await db.deleteFrom('users').where('id', '=', teacherNoSchool.id).execute();
   });
 
   it('should deny class creation for Student', async () => {

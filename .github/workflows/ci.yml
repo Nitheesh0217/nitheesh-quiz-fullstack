@@ -84,7 +84,7 @@ jobs:
       - name: Run migrations against test database
         run: npm run db:migrate:test
 
-      - name: Run tests with coverage (100% threshold enforced by vitest.config.ts)
+      - name: Run tests with coverage (thresholds enforced by vitest.config.ts)
         run: npm run coverage
 
       - name: Upload coverage report

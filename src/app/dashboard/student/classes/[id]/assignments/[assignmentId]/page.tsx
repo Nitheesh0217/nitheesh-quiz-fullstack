@@ -186,10 +186,10 @@ export default function StudentAssignmentDetailPage() {
   }, [assignmentId, classId, user?.id]);
 
   useEffect(() => {
-    if (assignmentId && user?.id) {
+    if (assignmentId) {
       fetchData();
     }
-  }, [assignmentId, user?.id, fetchData]);
+  }, [assignmentId, fetchData]);
 
   if (loading) {
     return (
@@ -200,7 +200,14 @@ export default function StudentAssignmentDetailPage() {
   }
 
   if (!user) return null;
-  if (!assignment) return <div className="p-6 text-center text-text-secondary animate-fadeIn">Assignment not found</div>;
+  if (!assignment) {
+    return (
+      <div className="p-6 text-center text-text-secondary animate-fadeIn">
+        Assignment not found
+        <Toast message={toast} onClose={() => setToast(null)} />
+      </div>
+    );
+  }
 
   const isSubmitted = submission !== null;
   const hasGrade = gradeRecord !== null;

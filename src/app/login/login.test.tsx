@@ -177,4 +177,57 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByTitle('Show password'));
     expect(passwordInput.type).toBe('text');
   });
+
+  it('shows a generic fallback toast for an unrecognized oauth_error value', () => {
+    mockSearchParams.set('oauth_error', 'some_other_error');
+    render(<LoginPage />);
+    expect(screen.getByText('Google sign-in error: some_other_error')).toBeDefined();
+  });
+
+  it('falls back to a default message when the API rejects without an error field', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({}),
+    });
+
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/School Email Address/i), { target: { value: 'student@school.edu' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
+
+    await waitFor(() => expect(screen.getByText('Invalid credentials')).toBeDefined());
+  });
+
+  it('shows a default failure toast when a non-Error value is thrown', async () => {
+    global.fetch = vi.fn().mockRejectedValue('network exploded');
+
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/School Email Address/i), { target: { value: 'student@school.edu' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
+
+    await waitFor(() => expect(screen.getByText('Failed to sign in. Check your email/password.')).toBeDefined());
+  });
+
+  it('shows an inline validation error for an invalid email format once touched', () => {
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText(/School Email Address/i), { target: { value: 'not-an-email' } });
+    expect(screen.getByText('Invalid school email address')).toBeDefined();
+  });
+
+  it('shows an inline validation error for a too-short password once touched', () => {
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'short' } });
+    expect(screen.getByText('Password must be at least 8 characters long')).toBeDefined();
+  });
+
+  it('toggles the "Keep me signed in" checkbox', () => {
+    render(<LoginPage />);
+    const checkbox = screen.getByText('Keep me signed in').previousSibling as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+  });
 });

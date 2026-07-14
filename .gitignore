@@ -21,6 +21,7 @@ nginx/ssl/*.pem
 *-results.txt
 *.tsbuildinfo
 demo-assets/
+scratch/
 inspect*.tmp.js
 probe*.js
 # Project is TypeScript-only - any loose root-level .js scratch file (from

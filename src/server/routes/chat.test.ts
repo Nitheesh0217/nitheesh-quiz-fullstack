@@ -247,6 +247,30 @@ describe('Chat and AI Assistant API (/api/chat)', () => {
       expect(dated?.due_date).toBe('July 15, 2026');
     });
 
+    it('get_my_assignments formats a null due date as null (not a string)', async () => {
+      const studentUser = { id: studentId, email: 'student.chat@school.edu', role: 'student' as const, school_id: schoolId };
+
+      const assignment = await db
+        .insertInto('assignments')
+        .values({
+          class_id: classId,
+          title: 'No Due Date Tool Assignment',
+          description: 'd',
+          due_date: null,
+          rubric: JSON.stringify([]),
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      const result = await executeTool('get_my_assignments', '{"status":"all"}', studentUser) as {
+        content: { assignments: Array<{ title: string; due_date: string | null }> };
+      };
+      const found = result.content.assignments.find((a) => a.title === 'No Due Date Tool Assignment');
+      expect(found?.due_date).toBeNull();
+
+      await db.deleteFrom('assignments').where('id', '=', assignment.id).execute();
+    });
+
     it('get_my_assignments is rejected for a teacher', async () => {
       const result = await executeTool(
         'get_my_assignments',

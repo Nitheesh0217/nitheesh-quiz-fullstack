@@ -291,6 +291,7 @@ export default function AdminDashboard() {
   };
 
   const handleEditUser = async () => {
+    /* v8 ignore next -- submit is only rendered while editingUser is set */
     if (!editingUser) return;
     if (!editUserName.trim() || !editUserEmail.trim()) {
       setToast({ id: 'val', type: 'error', text: 'Name and email are required' });
@@ -397,6 +398,7 @@ export default function AdminDashboard() {
   };
 
   const handleRemoveMember = async (teacherId: string) => {
+    /* v8 ignore next -- remove controls are only rendered inside an open group detail */
     if (!selectedGroup) return;
     try {
       await apiCall(`/api/admin/teacher-groups/${selectedGroup.id}/members/${teacherId}`, { method: 'DELETE' });

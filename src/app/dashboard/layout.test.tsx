@@ -133,7 +133,12 @@ describe('DashboardLayout', () => {
       const ctx = React.useContext(DashboardLayoutContext);
       React.useEffect(() => {
         ctx?.setBreadcrumbs([{ label: 'Home', href: '/dashboard' }, { label: 'Detail' }]);
-      }, [ctx]);
+        // Deliberately depend on the stable setter (as real pages do via
+        // useDashboardLayout), not on `ctx` itself - the provider's context
+        // value is a new object every render, so depending on `ctx` here
+        // would refire this effect with a new breadcrumbs array each time,
+        // looping forever.
+      }, [ctx?.setBreadcrumbs]);
       return null;
     }
 
@@ -154,5 +159,55 @@ describe('DashboardLayout', () => {
 
     fireEvent.click(screen.getByText('Open menu'));
     expect(screen.getAllByText('Concentrate').length).toBeGreaterThan(0);
+  });
+
+  it('highlights the nav link matching the current path', () => {
+    mockPathname = '/dashboard/classes';
+    vi.mocked(useAuth).mockReturnValue({ user: TEACHER_USER, isLoading: false, login: vi.fn(), logout: vi.fn(), hasRole: () => true });
+    render(<DashboardLayout>content</DashboardLayout>);
+
+    const activeLink = screen.getAllByText('Classes')[0].closest('a');
+    expect(activeLink?.className).toContain('bg-primary-soft');
+    expect(activeLink?.querySelector('.bg-primary.rounded-r')).not.toBeNull();
+  });
+
+  it('renders a custom action in the topbar via the layout context', () => {
+    vi.mocked(useAuth).mockReturnValue({ user: ADMIN_USER, isLoading: false, login: vi.fn(), logout: vi.fn(), hasRole: () => true });
+
+    function Child() {
+      const ctx = React.useContext(DashboardLayoutContext);
+      React.useEffect(() => {
+        ctx?.setAction(<button>Do Thing</button>);
+      }, [ctx?.setAction]);
+      return null;
+    }
+
+    render(
+      <DashboardLayout>
+        <Child />
+      </DashboardLayout>
+    );
+
+    expect(screen.getByText('Do Thing')).toBeDefined();
+  });
+
+  it('collapses the desktop sidebar to width 0 in focus mode', () => {
+    vi.mocked(useAuth).mockReturnValue({ user: ADMIN_USER, isLoading: false, login: vi.fn(), logout: vi.fn(), hasRole: () => true });
+
+    function Child() {
+      const ctx = React.useContext(DashboardLayoutContext);
+      React.useEffect(() => {
+        ctx?.setIsFocusMode(true);
+      }, [ctx?.setIsFocusMode]);
+      return null;
+    }
+
+    const { container } = render(
+      <DashboardLayout>
+        <Child />
+      </DashboardLayout>
+    );
+
+    expect(container.querySelector('aside')?.className).toContain('w-0');
   });
 });

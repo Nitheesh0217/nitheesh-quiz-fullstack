@@ -595,6 +595,49 @@ describe('Admin Routes Integration', () => {
     });
   });
 
+  it('should allow admin to update a user\'s email and school_id while leaving name and role untouched', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: adminToken,
+      },
+      payload: {
+        email: 'school-edit-target@school.edu',
+        password: 'editablepassword123',
+        name: 'School Edit Target',
+        role: 'student',
+        school_id: null,
+      },
+    });
+    const createdUser = createResponse.json();
+
+    const updateResponse = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/users/${createdUser.id}`,
+      cookies: {
+        [ACCESS_TOKEN_COOKIE]: adminToken,
+      },
+      payload: {
+        email: 'school-edit-target-updated@school.edu',
+        school_id: schoolId,
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    const updated = updateResponse.json();
+    expect(updated.name).toBe('School Edit Target');
+    expect(updated.email).toBe('school-edit-target-updated@school.edu');
+    expect(updated.role).toBe('student');
+    expect(updated.school_id).toBe(schoolId);
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/users/${createdUser.id}`,
+      cookies: { [ACCESS_TOKEN_COOKIE]: adminToken },
+    });
+  });
+
   it('should reject editing a user to an email already in use', async () => {
     const response = await app.inject({
       method: 'PUT',
