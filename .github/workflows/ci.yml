@@ -149,14 +149,29 @@ jobs:
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
         run: |
           printf '%s\n' \
+            "DATABASE_URL=postgres://postgres:postgres@localhost:5433/concentrate-quiz" \
+            "REDIS_URL=redis://localhost:6379" \
             "JWT_SECRET=${JWT_SECRET:-ci-e2e-jwt-secret-please-replace-me-with-64-chars-0000000000}" \
             "JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-ci-e2e-refresh-secret-please-replace-me-with-64-chars-000000}" \
             "COOKIE_SECRET=${COOKIE_SECRET:-ci-e2e-cookie-secret-please-replace-16-chars}" \
             > .env
 
-      - name: Start full stack
+      - name: Start e2e services
         run: |
-          docker compose up -d
+          docker compose up -d postgres redis
+
+      - name: Wait for e2e services
+        run: sleep 10
+
+      - name: Run e2e database migrations
+        run: npm run db:migrate
+
+      - name: Seed e2e demo data
+        run: npm run db:seed:e2e
+
+      - name: Start app
+        run: |
+          docker compose up -d app
 
       - name: Wait for app to be healthy
         run: |
